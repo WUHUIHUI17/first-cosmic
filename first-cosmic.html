@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卫星发射教学演示</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050508;
+            color: #fff;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            cursor: grab; 
+            user-select: none;
+        }
+        body.dragging { cursor: grabbing; }
+
+        /* UI 面板 */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 300px;
+            background: rgba(20, 22, 30, 0.95);
+            backdrop-filter: blur(12px);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            z-index: 100;
+            pointer-events: auto;
+        }
+
+        h2 { 
+            margin: 0 0 20px 0; 
+            color: #fff; 
+            font-size: 18px; 
+            text-align: center; 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            padding-bottom: 15px; 
+            letter-spacing: 2px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #999;
+        }
+        .stat-val { color: #fff; font-family: 'Consolas', monospace; font-weight: bold; }
+
+        #status-box {
+            background: rgba(0,0,0,0.4);
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            transition: color 0.3s, border 0.3s;
+            border: 1px solid transparent;
+        }
+
+        .control-group { margin-top: 25px; position: relative; }
+        label { display: block; font-size: 13px; color: #ccc; margin-bottom: 12px; }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+            margin: 0;
+            display: block;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #ffcc00;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+            box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+            margin-top: -2px; 
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        .slider-scale {
+            position: relative;
+            width: 100%;
+            height: 20px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: #666;
+        }
+        .scale-mark {
+            position: absolute;
+            transform: translateX(-50%); 
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .scale-mark:hover { color: #fff; text-decoration: underline; }
+        
+        .mark-min { left: 0%; } 
+        .mark-v1  { left: 59%; color: #eee; font-weight: bold; } 
+        .mark-v2  { left: 92%; color: #ff6666; font-weight: bold; } 
+
+        .btn-group { display: flex; gap: 10px; margin-top: 25px; }
+        
+        button {
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 12px;
+            transition: 0.2s;
+            width: 100%;
+        }
+        
+        #btn-launch { background: #ffcc00; color: #000; }
+        #btn-launch:hover { background: #ffdd44; }
+        
+        /* 清除按钮样式 */
+        #btn-clear { 
+            background: rgba(255, 50, 50, 0.2); 
+            color: #ffaaaa; 
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        #btn-clear:hover { background: rgba(255, 50, 50, 0.4); }
+
+        #target-arrow {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #ffcc00;
+            pointer-events: none;
+            text-shadow: 0 0 10px black;
+            z-index: 50;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h2>🛰️ 卫星发射</h2>
+        
+        <div id="status-box" style="color:#888">准备就绪</div>
+
+        <div class="stat-row">
+            <span>高度</span>
+            <span id="val-alt" class="stat-val">0 km</span>
+        </div>
+        <div class="stat-row">
+            <span>速度</span>
+            <span id="val-vel-rt" class="stat-val">0.00 km/s</span>
+        </div>
+
+        <div class="control-group">
+            <label>发射初速度: <span id="val-speed" style="color:#ffcc00; font-family:monospace; font-size:16px;">7.90</span> km/s</label>
+            
+            <input type="range" id="inp-speed" min="2.0" max="12.0" step="0.1" value="7.90">
+            
+            <div class="slider-scale">
+                <span class="scale-mark mark-min" onclick="setSpeed(2.0)">2.0</span>
+                <span class="scale-mark mark-v1" onclick="setSpeed(7.9)" title="第一宇宙速度">▲ 7.9</span>
+                <span class="scale-mark mark-v2" onclick="setSpeed(11.2)" title="第二宇宙速度">▲ 11.2</span>
+            </div>
+        </div>
+        
+        <div class="btn-group" style="flex-direction: column; gap: 5px;">
+            <button id="btn-launch">🚀 发射新卫星</button>
+            <button id="btn-clear">🗑️ 清除所有轨迹</button>
+        </div>
+    </div>
+
+    <div id="target-arrow">➤</div>
+    <canvas id="canvas"></canvas>
+
+<script>
+    const PHYSICS = {
+        R: 6371,
+        GM: 398600.4418,
+        timeMultiplier: 700, 
+        baseScale: 0.045     
+    };
+
+    // 鲜艳的颜色列表，用于区分不同轨迹
+    const COLORS = [
+        '#FFCC00', // 黄
+        '#00CCFF', // 蓝
+        '#FF3366', // 红
+        '#00FF66', // 绿
+        '#CC66FF', // 紫
+        '#FF9900', // 橙
+        '#00FFFF'  // 青
+    ];
+
+    let view = {
+        zoom: 1.0,
+        targetZoom: 1.0,
+        x: 0, y: 0, 
+        isDragging: false,
+        lastMouse: { x:0, y:0 }
+    };
+
+    let keys = {
+        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+        w: false, a: false, s: false, d: false, W: false, A: false, S: false, D: false
+    };
+
+    // 存储历史轨迹
+    let trajectoryHistory = []; 
+
+    const stars = [];
+    for(let i=0; i<400; i++) {
+        stars.push({
+            x: Math.random() * 5000 - 2500, 
+            y: Math.random() * 5000 - 2500,
+            size: Math.random() * 2 + 0.5,
+            alpha: Math.random() * 0.8 + 0.2
+        });
+    }
+
+    let state = {
+        running: false,
+        crashed: false,
+        crashTimer: 0,
+        t: 0,
+        pos: { x: 0, y: -(PHYSICS.R + 200) },
+        vel: { x: 7.9, y: 0 },
+        path: [],
+        color: COLORS[0] // 当前颜色
+    };
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const indicator = document.getElementById('target-arrow');
+    
+    const els = {
+        speed: document.getElementById('inp-speed'),
+        speedVal: document.getElementById('val-speed'),
+        status: document.getElementById('status-box'),
+        btnLaunch: document.getElementById('btn-launch'),
+        btnClear: document.getElementById('btn-clear'),
+        alt: document.getElementById('val-alt'),
+        velRt: document.getElementById('val-vel-rt')
+    };
+
+    const earthImg = new Image();
+    earthImg.src = "earth.jpg"; 
+    
+    earthImg.onload = () => { 
+        if(!state.running) draw(); 
+    };
+    earthImg.onerror = () => {
+        if (!window.hasAlerted) {
+            alert("⚠️ 未检测到 earth.jpg\n请确保图片在同一目录下。");
+            window.hasAlerted = true;
+        }
+    };
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        if(!state.running) draw();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- 交互控制 ---
+
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY * -0.001;
+        view.targetZoom *= (1 + delta);
+        view.targetZoom = Math.max(0.02, Math.min(view.targetZoom, 10.0));
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', e => {
+        view.isDragging = true;
+        view.lastMouse = { x: e.clientX, y: e.clientY };
+        document.body.classList.add('dragging');
+    });
+
+    window.addEventListener('mousemove', e => {
+        if(view.isDragging) {
+            const dx = e.clientX - view.lastMouse.x;
+            const dy = e.clientY - view.lastMouse.y;
+            view.x += dx;
+            view.y += dy;
+            view.lastMouse = { x: e.clientX, y: e.clientY };
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        view.isDragging = false;
+        document.body.classList.remove('dragging');
+    });
+
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+
+    function processInput() {
+        const speed = 10 / Math.sqrt(view.zoom); 
+        if (keys.ArrowUp || keys.w || keys.W) view.y += speed;
+        if (keys.ArrowDown || keys.s || keys.S) view.y -= speed;
+        if (keys.ArrowLeft || keys.a || keys.A) view.x += speed;
+        if (keys.ArrowRight || keys.d || keys.D) view.x -= speed;
+    }
+
+    window.setSpeed = (v) => {
+        els.speed.value = v;
+        els.speedVal.innerText = v.toFixed(2);
+    };
+
+    // --- 物理引擎 (RK4) ---
+    function getAcc(x, y) {
+        const r2 = x*x + y*y;
+        const r = Math.sqrt(r2);
+        const a = -PHYSICS.GM / (r2 * r); 
+        return { ax: a * x, ay: a * y };
+    }
+
+    function rk4Step(dt) {
+        let {x, y} = state.pos;
+        let {x:vx, y:vy} = state.vel;
+        let a1 = getAcc(x, y);
+        let x2 = x + 0.5*vx*dt, y2 = y + 0.5*vy*dt;
+        let vx2 = vx + 0.5*a1.ax*dt, vy2 = vy + 0.5*a1.ay*dt;
+        let a2 = getAcc(x2, y2);
+        let x3 = x + 0.5*vx2*dt, y3 = y + 0.5*vy2*dt;
+        let vx3 = vx + 0.5*a2.ax*dt, vy3 = vy + 0.5*a2.ay*dt;
+        let a3 = getAcc(x3, y3);
+        let x4 = x + vx3*dt, y4 = y + vy3*dt;
+        let vx4 = vx + a3.ax*dt, vy4 = vy + a3.ay*dt;
+        let a4 = getAcc(x4, y4);
+
+        state.pos.x += (dt/6)*(vx + 2*vx2 + 2*vx3 + vx4);
+        state.pos.y += (dt/6)*(vy + 2*vy2 + 2*vy3 + vy4);
+        state.vel.x += (dt/6)*(a1.ax + 2*a2.ax + 2*a3.ax + a4.ax);
+        state.vel.y += (dt/6)*(a1.ay + 2*a2.ay + 2*a3.ay + a4.ay);
+    }
+
+    function launch() {
+        // 1. 如果当前有轨迹，保存到历史记录
+        if (state.path.length > 0) {
+            trajectoryHistory.push({
+                path: state.path, // 保存路径数组
+                color: state.color // 保存颜色
+            });
+        }
+
+        // 2. 准备新发射
+        const v = parseFloat(els.speed.value);
+        // 轮换颜色: (历史数量 + 0) % 颜色总数
+        const nextColor = COLORS[trajectoryHistory.length % COLORS.length];
+
+        state = {
+            running: true,
+            crashed: false,
+            crashTimer: 0,
+            t: 0,
+            pos: { x: 0, y: -(PHYSICS.R + 200) },
+            vel: { x: v, y: 0 },
+            path: [], // 清空当前路径
+            color: nextColor
+        };
+        
+        updateStatus(v);
+    }
+
+    els.btnClear.onclick = () => {
+        trajectoryHistory = []; // 清空历史
+        state.path = []; // 清空当前
+        state.running = false;
+        state.crashed = false;
+        state.pos.y = -(PHYSICS.R + 200);
+        state.pos.x = 0;
+        draw(); // 重绘
+    };
+
+    function update() {
+        processInput(); 
+        view.zoom += (view.targetZoom - view.zoom) * 0.1;
+
+        if (state.running) {
+            const dt = 1.0 * PHYSICS.timeMultiplier / 60;
+            const subSteps = 10; 
+            for(let i=0; i<subSteps; i++) {
+                if(state.running) {
+                    rk4Step(dt/subSteps);
+                    checkCollision();
+                }
+            }
+            state.t++;
+            if (state.t % 5 === 0) {
+                state.path.push({...state.pos});
+                // 移除 shift() 限制，让轨迹无限长（直到浏览器撑不住，但演示通常没事）
+                // if (state.path.length > 5000) state.path.shift(); 
+            }
+            updateUI();
+        }
+    }
+
+    function checkCollision() {
+        const r = Math.sqrt(state.pos.x**2 + state.pos.y**2);
+        if (r <= PHYSICS.R) {
+            state.running = false;
+            state.crashed = true;
+            const ang = Math.atan2(state.pos.y, state.pos.x);
+            state.pos.x = Math.cos(ang) * PHYSICS.R;
+            state.pos.y = Math.sin(ang) * PHYSICS.R;
+            setStatus("🚀 卫星坠毁", "#ff4444");
+        }
+    }
+
+    function updateUI() {
+        const r = Math.sqrt(state.pos.x**2 + state.pos.y**2);
+        const v = Math.sqrt(state.vel.x**2 + state.vel.y**2);
+        const alt = r - PHYSICS.R;
+        const energy = (v*v)/2 - PHYSICS.GM/r;
+
+        els.alt.innerText = alt.toFixed(0) + " km";
+        els.velRt.innerText = v.toFixed(2) + " km/s";
+
+        if(state.running) {
+            if (energy >= 0) setStatus("🌌 逃逸 (深空)", "#00ccff");
+            else if (alt > 40000) setStatus("☄️ 高椭圆轨道", "#ffcc00");
+            else setStatus("🛰️ 稳定轨道", "#77ff77");
+        }
+        updateIndicator();
+    }
+
+    function setStatus(text, color) {
+        els.status.innerText = text;
+        els.status.style.color = color;
+        els.status.style.borderColor = color;
+    }
+    
+    function updateStatus(initV) {
+        if(initV < 7.9) setStatus("⚠️ 速度不足", "#ffaa00");
+        else if(initV < 11.2) setStatus("🟢 闭合轨道", "#77ff77");
+        else setStatus("🚀 逃逸速度", "#00ccff");
+    }
+
+    function updateIndicator() {
+        const cx = canvas.width/2 + view.x;
+        const cy = canvas.height/2 + view.y;
+        const s = PHYSICS.baseScale * view.zoom;
+        const sx = cx + state.pos.x * s;
+        const sy = cy + state.pos.y * s;
+
+        if (sx < 0 || sx > canvas.width || sy < 0 || sy > canvas.height) {
+            indicator.style.display = 'flex';
+            const pad = 30;
+            const ix = Math.max(pad, Math.min(canvas.width - pad, sx));
+            const iy = Math.max(pad, Math.min(canvas.height - pad, sy));
+            indicator.style.left = (ix - 20) + 'px';
+            indicator.style.top = (iy - 20) + 'px';
+            const angle = Math.atan2(sy - cy, sx - cx);
+            indicator.style.transform = `rotate(${angle * 180 / Math.PI}deg)`;
+        } else {
+            indicator.style.display = 'none';
+        }
+    }
+
+    // --- 渲染 ---
+    function draw() {
+        ctx.fillStyle = '#050508';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const cx = canvas.width / 2 + view.x;
+        const cy = canvas.height / 2 + view.y;
+        
+        ctx.save();
+        ctx.translate(cx * 0.1, cy * 0.1); 
+        ctx.fillStyle = 'white';
+        stars.forEach(star => {
+            let sx = (star.x + cx*0.1) % 5000;
+            let sy = (star.y + cy*0.1) % 5000;
+            ctx.globalAlpha = star.alpha;
+            ctx.fillRect(star.x, star.y, star.size, star.size);
+        });
+        ctx.restore();
+
+        const scale = PHYSICS.baseScale * view.zoom;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+
+        // 地球
+        const r = PHYSICS.R;
+        if (earthImg.complete && earthImg.naturalWidth !== 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI*2);
+            ctx.clip();
+            ctx.drawImage(earthImg, -r*1.2, -r*1.2, r*2.4, r*2.4);
+            
+            let sh = ctx.createRadialGradient(-r*0.4, -r*0.4, r*0.5, 0,0,r);
+            sh.addColorStop(0, "rgba(0,0,0,0)");
+            sh.addColorStop(1, "rgba(0,0,0,0.4)");
+            ctx.fillStyle = sh;
+            ctx.fill();
+            ctx.restore();
+        } else {
+            ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fillStyle='#2244aa'; ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI*2);
+        ctx.strokeStyle = "rgba(70, 130, 255, 0.2)";
+        ctx.lineWidth = 100;
+        ctx.stroke();
+
+        // --- 绘制所有历史轨迹 ---
+        trajectoryHistory.forEach(traj => {
+             drawPath(traj.path, traj.color, 0.5); // 历史轨迹稍微半透明
+        });
+
+        // --- 绘制当前轨迹 ---
+        if (state.path.length > 0) {
+            drawPath(state.path, state.color, 1.0); // 当前轨迹全亮
+        }
+
+        // 卫星 / 爆炸
+        if (!state.crashed) {
+            ctx.fillStyle = "#fff";
+            const sR = Math.max(120, 5/scale);
+            ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y, sR, 0, Math.PI*2); ctx.fill();
+        } else {
+            drawExplosion();
+        }
+
+        ctx.restore();
+    }
+
+    // 封装画线函数
+    function drawPath(pathPts, color, alpha) {
+        if (pathPts.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(pathPts[0].x, pathPts[0].y);
+        for(let i=1; i<pathPts.length; i++) ctx.lineTo(pathPts[i].x, pathPts[i].y);
+        
+        // 动态线宽: 缩放越小线越粗，保证可见
+        const scale = PHYSICS.baseScale * view.zoom;
+        ctx.lineWidth = Math.max(40, 3 / scale); 
+        
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+    }
+
+    function drawExplosion() {
+        state.crashTimer++;
+        const age = state.crashTimer;
+        const dur = 100;
+        if (age >= dur) return;
+
+        ctx.save();
+        ctx.translate(state.pos.x, state.pos.y);
+
+        if (age > 5) {
+            const smR = 150 + age * 15;
+            const smA = Math.max(0, 0.6 * (1 - age/dur));
+            let g = ctx.createRadialGradient(0,0,0,0,0,smR);
+            g.addColorStop(0, `rgba(50,50,50,${smA})`);
+            g.addColorStop(1, `rgba(0,0,0,0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(0,0,smR,0,Math.PI*2); ctx.fill();
+        }
+        if (age < 60) {
+            const fR = (100 + age*20) * (1 + Math.sin(age)*0.1);
+            const fA = 1 - age/60;
+            let g = ctx.createRadialGradient(0,0,fR*0.2, 0,0,fR);
+            g.addColorStop(0, `rgba(255,255,200,${fA})`);
+            g.addColorStop(0.4, `rgba(255,100,0,${fA})`);
+            g.addColorStop(1, `rgba(50,0,0,0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(0,0,fR,0,Math.PI*2); ctx.fill();
+        }
+        if (age < 10) {
+            ctx.fillStyle = `rgba(255,255,255,${1-age/10})`;
+            ctx.beginPath(); ctx.arc(0,0,300+age*100,0,Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    els.btnLaunch.onclick = launch;
+    els.speed.oninput = (e) => els.speedVal.innerText = parseFloat(e.target.value).toFixed(2);
+    
+    // 初始化位置
+    state.pos.y = -(PHYSICS.R + 200);
+    loop();
+
+</script>
+</body>
+</html>
